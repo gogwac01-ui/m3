@@ -13,6 +13,24 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
+// 관리자 페이지. Railway Variables 자체를 노출하지 않고 설정 상태만 보여준다.
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
+});
+
+app.get('/api/admin/status', (req, res) => {
+  const configured = (name) => Boolean(String(process.env[name] || '').trim());
+  res.json({
+    ok: true,
+    services: {
+      openai: configured('OPENAI_API_KEY'),
+      naverSearchClientId: configured('NAVER_SEARCH_CLIENT_ID'),
+      naverSearchClientSecret: configured('NAVER_SEARCH_CLIENT_SECRET'),
+    },
+    ready: configured('OPENAI_API_KEY') && configured('NAVER_SEARCH_CLIENT_ID') && configured('NAVER_SEARCH_CLIENT_SECRET'),
+  });
+});
+
 // 1차 MVP: 링크 -> 결과 전체 생성
 app.post('/api/generate', async (req, res) => {
   const { shoppingConnectUrl, disclosureText, knownProductNameHint } = req.body || {};
