@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>네이버 블로그 콘텐츠 생성기 (MVP)</title>
+<style>
+  body { font-family: -apple-system, "Malgun Gothic", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; line-height: 1.6; }
+  textarea, input { width: 100%; box-sizing: border-box; padding: 10px; margin: 6px 0 16px; font-size: 15px; }
+  textarea { min-height: 60px; }
+  button { padding: 10px 18px; font-size: 15px; cursor: pointer; }
+  #result { white-space: pre-wrap; border: 1px solid #ddd; padding: 16px; margin-top: 20px; border-radius: 8px; }
+  .title-item { padding: 8px; border: 1px solid #eee; margin: 4px 0; cursor: pointer; }
+  .error { color: #c00; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-left: 6px; }
+  .badge-direct { background: #e6f4ea; color: #1a7f37; }
+  .badge-fallback { background: #fff3cd; color: #8a6100; }
+  .hidden { display: none; }
+  fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin: 10px 0; }
+  legend { padding: 0 6px; font-weight: bold; }
+  .thumb { max-width: 200px; display: block; margin: 8px 0; }
+  .body-img { max-width: 100%; margin: 6px 0; }
+</style>
+</head>
+<body>
+  <h2>네이버 블로그 콘텐츠 생성기 (1차 MVP)</h2>
+
+  <label>쇼핑커넥트 링크</label>
+  <input id="url" placeholder="https://naver.me/..." />
+
+  <label>제휴 고지 문구</label>
+  <textarea id="disclosure">이 포스팅은 쇼핑커넥트 활동의 일환으로 수수료를 제공받을 수 있습니다.</textarea>
+
+  <label>상품명 힌트 (선택 — 링크가 안 열릴 때 검색 폴백에 사용됩니다)</label>
+  <input id="productNameHint" placeholder="예: 클래파 초경량 무선청소기" />
+
+  <div class="btn-row">
+    <button onclick="generate()">생성하기</button>
+  </div>
+
+  <div id="result"></div>
+
+  <!-- 상품 정보 추출이 완전히 실패했을 때(직접+검색 폴백 모두 실패) 사용자가 직접 입력하는 폼 -->
+  <fieldset id="manualForm" class="hidden">
+    <legend>상품 정보 직접 입력</legend>
+    <label>상품명 (필수)</label>
+    <input id="manualName" />
+    <label>가격</label>
+    <input id="manualPrice" placeholder="숫자만, 예: 89000" />
+    <label>이미지 URL (한 줄에 하나씩, 최소 1개)</label>
+    <textarea id="manualImages" placeholder="https://.../img1.jpg&#10;https://.../img2.jpg"></textarea>
+    <div class="btn-row">
+      <button onclick="generateManual()">이 정보로 생성하기</button>
+    </div>
+  </fieldset>
+
+<script>
+let lastShoppingConnectUrl = '';
+
+async function generate() {
+  const shoppingConnectUrl = document.getElementById('url').value.trim();
+  const disclosureText = document.getElementById('disclosure').value.trim();
+  const knownProductNameHint = document.getElementById('productNameHint').value.trim() || undefined;
+  lastShoppingConnectUrl = shoppingConnectUrl;
+
+  const resultEl = document.getElementById('result');
+  const manualForm = document.getElementById('manualForm');
+  manualForm.classList.add('hidden');
+  resultEl.innerHTML = '생성 중... (링크 확인 → 정보 추출 → 검색 폴백까지 순서대로 시도합니다)';
+
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ shoppingConnectUrl, disclosureText, knownProductNameHint }),
+  });
+  const data = await res.json();
+
+  if (!data.ok) {
+    renderFailure(data);
+    return;
+  }
+  renderResult(data.result);
+}
+
+function renderFailure(data) {
+  const resultEl = document.getElementById('result');
+  resultEl.innerHTML =
+    '<div class="error">[' + data.stage + '/' + data.code + '] ' + data.message + '</div>';
+
+  if (data.requiresManualInput) {
+    resultEl.innerHTML += '<p>직접 추출과 검색 폴백 모두 실패했습니다. 아래에 상품 정보를 직접 입력해주세요.</p>';
+    const manualForm = document.getElementById('manualForm');
+    manualForm.classList.remove('hidden');
+    if (data.extracted && data.extracted.productName) {
+      document.getElementById('manualName').value = data.extracted.productName;
+    }
+  }
+}
+
+async function generateManual() {
+  const productName = document.getElementById('manualName').value.trim();
+  const price = document.getElementById('manualPrice').value.trim();
+  const images = document.getElementById('manualImages').value
+    .split('\n').map(s => s.trim()).filter(Boolean);
+  const disclosureText = document.getElementById('disclosure').value.trim();
+
+  if (!productName) { alert('상품명은 필수입니다.'); return; }
+  if (!images.length) { alert('이미지 URL을 최소 1개 입력해주세요.'); return; }
+
+  const resultEl = document.getElementById('result');
+  resultEl.innerHTML = '생성 중...';
+
+  const res = await fetch('/api/generate-manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      extracted: {
+        productName, price: price || null, images,
+        affiliateUrl: lastShoppingConnectUrl,
+        dataSource: 'manual',
+      },
+      disclosureText,
+    }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    resultEl.innerHTML = '<div class="error">' + data.message + '</div>';
+    return;
+  }
+  renderResult(data.result);
+}
+
+function renderResult(r) {
+  const resultEl = document.getElementById('result');
+  const src = r.extracted && r.extracted.dataSource;
+  const badge = src === 'search-fallback'
+    ? '<span class="badge badge-fallback">검색으로 보완된 정보' + (r.extracted.searchFallbackSourceTitle ? ' · ' + r.extracted.searchFallbackSourceTitle : '') + '</span>'
+    : src === 'manual'
+      ? '<span class="badge badge-fallback">직접 입력한 정보</span>'
+      : '<span class="badge badge-direct">링크에서 직접 추출됨</span>';
+
+  resultEl.innerHTML =
+    '<div>' + badge + '</div>' +
+    '<h3>제목 5개 (클릭해서 복사)</h3>' +
+    r.titles.map((t, i) => '<div class="title-item" onclick="copyText(this.innerText)">' + (i+1) + '. ' + t + '</div>').join('') +
+    '<h3>키워드</h3>' +
+    '<p>메인: ' + r.mainKeyword + '<br>서브: ' + r.subKeywords.join(', ') + '<br>롱테일: ' + r.longTailKeywords.join(', ') + '</p>' +
+    '<h3>썸네일</h3><img class="thumb" src="' + r.thumbnail.url + '" />' +
+    '<h3>본문 이미지 순서 (' + r.bodyImages.length + '장)</h3>' +
+    r.bodyImages.map(img => '<img class="body-img" src="' + img.url + '" />').join('') +
+    '<h3>본문</h3><div id="bodyText">' + r.body.replace(/</g,'&lt;') + '</div>' +
+    '<div class="btn-row">' +
+    '<button onclick="copyText(document.getElementById(\'bodyText\').innerText)">본문 복사</button>' +
+    '<button onclick="copyText(document.getElementById(\'bodyText\').innerText)">전체 복사</button>' +
+    '<button onclick="generate()">다시 생성</button>' +
+    '</div>';
+}
+
+function copyText(t) {
+  navigator.clipboard.writeText(t).then(() => alert('복사됨'));
+}
+</script>
+</body>
+</html>
