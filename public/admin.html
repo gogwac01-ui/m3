@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>M3 관리자</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif;background:#f5f6f8;margin:0;color:#171717}.wrap{max-width:820px;margin:48px auto;padding:0 18px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:22px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.03)}h1{margin:0;font-size:28px}h2{font-size:18px;margin:0 0 16px}.row{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid #eee}.row:last-child{border:0}.status{font-weight:700}.ok{color:#12833b}.bad{color:#c52b2b}.note{font-size:13px;color:#666;line-height:1.6}.ready{font-size:18px;font-weight:800}a{color:#111;text-decoration:none;border:1px solid #ddd;background:#fff;padding:8px 12px;border-radius:9px}button{border:0;background:#111;color:#fff;padding:10px 15px;border-radius:9px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="top"><h1>M3 관리자</h1><a href="/">콘텐츠 생성기로 이동</a></div>
+ <div class="card">
+  <h2>서비스 상태</h2>
+  <div id="ready" class="ready">확인 중...</div>
+ </div>
+ <div class="card">
+  <h2>API 환경변수</h2>
+  <div class="row"><span>OpenAI API</span><span id="openai" class="status">확인 중</span></div>
+  <div class="row"><span>Naver Search Client ID</span><span id="naverId" class="status">확인 중</span></div>
+  <div class="row"><span>Naver Search Client Secret</span><span id="naverSecret" class="status">확인 중</span></div>
+  <p class="note">보안을 위해 실제 API Key 값은 관리자 페이지에 표시하지 않습니다. 키 등록과 변경은 Railway → m3 → Variables에서 처리하세요.</p>
+  <button onclick="loadStatus()">상태 새로고침</button>
+ </div>
+ <div class="card">
+  <h2>필수 Railway Variables</h2>
+  <div class="note">OPENAI_API_KEY<br>NAVER_SEARCH_CLIENT_ID<br>NAVER_SEARCH_CLIENT_SECRET</div>
+ </div>
+</div>
+<script>
+function paint(id,on){const el=document.getElementById(id);el.textContent=on?'설정 완료':'미설정';el.className='status '+(on?'ok':'bad')}
+async function loadStatus(){
+ const ready=document.getElementById('ready');
+ try{
+  const r=await fetch('/api/admin/status',{cache:'no-store'}); const d=await r.json();
+  paint('openai',d.services.openai); paint('naverId',d.services.naverSearchClientId); paint('naverSecret',d.services.naverSearchClientSecret);
+  ready.textContent=d.ready?'필수 API 설정 완료':'설정이 필요한 항목이 있습니다'; ready.className='ready '+(d.ready?'ok':'bad');
+ }catch(e){ready.textContent='상태 확인 실패';ready.className='ready bad'}
+}
+loadStatus();
+</script>
+</body>
+</html>
